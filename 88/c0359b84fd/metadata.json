@@ -1,0 +1,29 @@
+{
+  "cli_version": "0.11.6-nightly.202610180623.a334cb698.0.20261019185923-44bed00e6afe",
+  "checkpoint_id": "88c0359b84fd",
+  "strategy": "manual-commit",
+  "branch": "feat/sweep-command",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "cmd/forgemark/sweep.go",
+    "internal/bench/cleanup.go",
+    "internal/bench/cleanup_test.go",
+    "internal/bench/sweep_test.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/88/c0359b84fd/0/metadata.json",
+      "transcript": "/88/c0359b84fd/0/full.jsonl",
+      "compact_transcript": "/88/c0359b84fd/0/transcript.jsonl",
+      "content_hash": "/88/c0359b84fd/0/content_hash.txt",
+      "prompt": "/88/c0359b84fd/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 172,
+    "cache_creation_tokens": 147928,
+    "cache_read_tokens": 1693691,
+    "output_tokens": 9122,
+    "api_call_count": 11
+  }
+}

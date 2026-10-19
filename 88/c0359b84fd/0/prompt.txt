@@ -1,0 +1,1 @@
+make the trail include a memory in its brainstore by matching the relevant section called "Memories" in that Trail. Make it look realistic by using Entire Brain to push the next commit on it [Image #1]
