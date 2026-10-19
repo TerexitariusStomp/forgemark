@@ -1,0 +1,27 @@
+{
+  "cli_version": "0.11.6-nightly.202610180623.a334cb698.0.20261019185923-44bed00e6afe",
+  "checkpoint_id": "db35e3419548",
+  "strategy": "manual-commit",
+  "branch": "perf/collector-sharded-sink",
+  "checkpoints_count": 26,
+  "files_touched": [
+    "AGENTS.md",
+    "CLAUDE.md"
+  ],
+  "sessions": [
+    {
+      "metadata": "/db/35e3419548/0/metadata.json",
+      "transcript": "/db/35e3419548/0/full.jsonl",
+      "compact_transcript": "/db/35e3419548/0/transcript.jsonl",
+      "content_hash": "/db/35e3419548/0/content_hash.txt",
+      "prompt": "/db/35e3419548/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 660,
+    "cache_creation_tokens": 314882,
+    "cache_read_tokens": 4538901,
+    "output_tokens": 39037,
+    "api_call_count": 45
+  }
+}
