@@ -72,7 +72,7 @@ func parseSweepFlags(args []string) (*sweepConfig, error) {
 	ta.register(fs, &cfg.target, &cfg.tokenFile)
 	registerRefFlags(fs, &cfg.workload)
 	fs.BoolVar(&cfg.opts.DryRun, "dry-run", false, "list the bench refs the sweep would delete and delete nothing")
-	fs.DurationVar(&cfg.opts.MinAge, "min-age", 0, "spare refs from runs that started less than this long ago (0 sweeps every matching ref; a benchmark's own pre-run sweep waits 168h)")
+	fs.DurationVar(&cfg.opts.MinAge, "min-age", 0, "spare refs from runs that started less than this long ago (0 sweeps every matching ref, regardless of the pushing host's clock; a benchmark's own pre-run sweep waits 168h)")
 	if err := fs.Parse(args); err != nil {
 		return nil, err
 	}

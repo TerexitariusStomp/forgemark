@@ -67,6 +67,13 @@ const legacyRefNamespace = "refs/heads/"
 // staleRef reports whether ref is a forgemark bench ref whose owning run
 // started before cutoff. A ref that matches the shape but carries an
 // unparseable timestamp is NOT stale — when in doubt, never delete.
+//
+// A zero cutoff means "no age guard": every well-formed bench ref is stale.
+// The run timestamp comes from the clock of whichever host pushed the ref, so
+// a standalone sweep at -min-age 0 compared against time.Now() would silently
+// skip refs from a generator whose clock runs ahead of the sweeper's — the
+// exact refs an operator asking for "everything" expects gone. Shape and a
+// parseable run ID still gate deletion; only the time comparison is dropped.
 func staleRef(re *regexp.Regexp, ref string, cutoff time.Time) bool {
 	m := re.FindStringSubmatch(ref)
 	if m == nil {
@@ -75,6 +82,9 @@ func staleRef(re *regexp.Regexp, ref string, cutoff time.Time) bool {
 	nanos, err := strconv.ParseInt(m[1], 36, 64)
 	if err != nil {
 		return false
+	}
+	if cutoff.IsZero() {
+		return true
 	}
 	return time.Unix(0, nanos).Before(cutoff)
 }
@@ -150,7 +160,12 @@ func (r *Runner) SweepBenchRefs(ctx context.Context, o SweepOptions) ([]RepoSwee
 	if o.MinAge < 0 {
 		return nil, fmt.Errorf("sweep min age %s must be >= 0", o.MinAge)
 	}
-	return r.sweepBenchRefs(ctx, time.Now().Add(-o.MinAge), o.DryRun)
+	// Zero age means no guard at all, not "older than now": see staleRef.
+	var cutoff time.Time
+	if o.MinAge > 0 {
+		cutoff = time.Now().Add(-o.MinAge)
+	}
+	return r.sweepBenchRefs(ctx, cutoff, o.DryRun)
 }
 
 func (r *Runner) sweepBenchRefs(ctx context.Context, cutoff time.Time, dryRun bool) ([]RepoSweep, error) {
