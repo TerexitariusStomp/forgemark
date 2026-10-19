@@ -1,0 +1,32 @@
+{
+  "cli_version": "0.11.6-nightly.202610180623.a334cb698.0.20261019185923-44bed00e6afe",
+  "checkpoint_id": "ea6099e3bd8e",
+  "session_id": "068b2028-ebb3-4f61-abe1-a73d977fe017",
+  "strategy": "manual-commit",
+  "created_at": "2026-10-19T19:37:34.357137Z",
+  "branch": "feat/sweep-command",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "README.md",
+    "cmd/forgemark/main.go",
+    "cmd/forgemark/sweep.go",
+    "cmd/forgemark/sweep_test.go",
+    "internal/bench/cleanup.go",
+    "internal/bench/config.go",
+    "internal/bench/sweep_test.go"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-fable-5-1",
+  "turn_id": "5bb7b7cc74e4",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 838,
+    "cache_creation_tokens": 136684,
+    "cache_read_tokens": 3097695,
+    "output_tokens": 44008,
+    "api_call_count": 29
+  },
+  "session_metrics": {
+    "turn_count": 1
+  }
+}

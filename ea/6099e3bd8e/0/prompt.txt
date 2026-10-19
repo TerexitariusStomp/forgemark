@@ -1,0 +1,15 @@
+entire doctor
+
+---
+
+fix what you need to fix for entire doctor to not complain, then i want you to push a trail with title "Brainstore test, do not merge" where you implement 4. Add a standalone sweep command. The README says branch and repo strategies leave one ref per agent on the target, swept only when a later run finds them a week old. A sweep subcommand with a dry-run flag and a branch-prefix filter, built on the existing cleanup code, gives users immediate cleanup of throwaway repos. Small, self-contained and easy to show end to end.
+
+---
+
+<task-notification>
+<task-id>bcqup4vs9</task-id>
+<tool-use-id>toolu_015jyDQBAyGdEVAv6JMowfVg</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-jkcso-Projects-forgemark/068b2028-ebb3-4f61-abe1-a73d977fe017/tasks/bcqup4vs9.output</output-file>
+<status>completed</status>
+<summary>Background command "Run golangci-lint v2 via go run in the background" completed (exit code 0)</summary>
+</task-notification>
