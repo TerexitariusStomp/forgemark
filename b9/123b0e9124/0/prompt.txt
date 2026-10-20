@@ -1,0 +1,60 @@
+move the push-options from worktree to branch
+
+---
+
+use codex to review both branches
+
+---
+
+<task-notification>
+<task-id>bnda1r1gr</task-id>
+<tool-use-id>toolu_01JJAXDmSDnbjJ8TgFewcTXK</tool-use-id>
+<output-file>/tmp/claude-1000/-home-coder-git-entireio-forgemark/6fb2300e-5ce5-4325-8135-97b0002c6b52/tasks/bnda1r1gr.output</output-file>
+<status>failed</status>
+<summary>Background command "cd /tmp/claude-1000/-home-coder-git-entireio-forgemark/6fb2300e-5ce5-4325-8135-97b0002c6b52/scratchpad/wt-drain &amp;&amp; codex review --base main "Focus on correctness of the end-of-window drain: latency estimator behaviour, whether any op can still be cancelled en masse, effects on measured throughput/percentiles and the live collector, token-lifetime accounting, and concurrency/races." &gt; ../review-drain.txt 2&gt;&amp;1" failed with exit code 2</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>b61i6zq8k</task-id>
+<tool-use-id>toolu_018TEMsFav69vx7LpyWKfJfP</tool-use-id>
+<output-file>/tmp/claude-1000/-home-coder-git-entireio-forgemark/6fb2300e-5ce5-4325-8135-97b0002c6b52/tasks/b61i6zq8k.output</output-file>
+<status>failed</status>
+<summary>Background command "cd /tmp/claude-1000/-home-coder-git-entireio-forgemark/6fb2300e-5ce5-4325-8135-97b0002c6b52/scratchpad/wt-pushopts &amp;&amp; codex review --base main "Focus on correctness of push-option propagation to every push (measured, session deletes, stale-ref sweep), go-git semantics when the server lacks the push-options capability, validation, CLI flag behaviour, and test quality." &gt; ../review-pushopts.txt 2&gt;&amp;1" failed with exit code 2</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>by9bfamn0</task-id>
+<tool-use-id>toolu_01FW2bANWG1HvS4gSax7m61Z</tool-use-id>
+<output-file>/tmp/claude-1000/-home-coder-git-entireio-forgemark/6fb2300e-5ce5-4325-8135-97b0002c6b52/tasks/by9bfamn0.output</output-file>
+<status>completed</status>
+<summary>Background command "cd /tmp/claude-1000/-home-coder-git-entireio-forgemark/6fb2300e-5ce5-4325-8135-97b0002c6b52/scratchpad/wt-pushopts &amp;&amp; codex review --base main &gt; ../review-pushopts.txt 2&gt;&amp;1" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bp749itwh</task-id>
+<tool-use-id>toolu_01Fz2qEabitNQhxyn6vCNC2X</tool-use-id>
+<output-file>/tmp/claude-1000/-home-coder-git-entireio-forgemark/6fb2300e-5ce5-4325-8135-97b0002c6b52/tasks/bp749itwh.output</output-file>
+<status>completed</status>
+<summary>Background command "cd /tmp/claude-1000/-home-coder-git-entireio-forgemark/6fb2300e-5ce5-4325-8135-97b0002c6b52/scratchpad/wt-drain &amp;&amp; codex review --base main &gt; ../review-drain.txt 2&gt;&amp;1" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+go ahead fo rthat commit.
+
+For push-options:
+
+
+<pasted_content id="bdb2">
+### High finding
+
+**Location:** `internal/bench/agent.go:210`
+
+go-git silently omits `Options` when the server does not advertise `push-options`, so a requested safety option such as `ci.skip` can be absent while the push still succeeds and ForgeMark reports a valid sample. Detect unsupported capability and fail before measured writes instead of silently performing materially different remote operations.
+</pasted_content id="bdb2">
