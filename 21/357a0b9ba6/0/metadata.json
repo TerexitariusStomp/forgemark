@@ -1,0 +1,36 @@
+{
+  "cli_version": "0.11.5-nightly.202610140625.065c76361",
+  "checkpoint_id": "21357a0b9ba6",
+  "session_id": "6fb2300e-5ce5-4325-8135-97b0002c6b52",
+  "strategy": "manual-commit",
+  "created_at": "2026-10-20T10:13:51.152137455Z",
+  "branch": "push-options",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "README.md",
+    "cmd/forgemark/main.go",
+    "internal/bench/agent.go",
+    "internal/bench/agent_test.go",
+    "internal/bench/cleanup.go",
+    "internal/bench/config.go",
+    "internal/bench/config_test.go",
+    "internal/bench/runner.go",
+    "internal/bench/session.go"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-fable-5-1",
+  "turn_id": "c7d6a922698e",
+  "checkpoint_transcript_start": 311,
+  "transcript_lines_at_start": 311,
+  "compact_transcript_start": 45,
+  "token_usage": {
+    "input_tokens": 2,
+    "cache_creation_tokens": 34,
+    "cache_read_tokens": 151470,
+    "output_tokens": 650,
+    "api_call_count": 1
+  },
+  "session_metrics": {
+    "turn_count": 1
+  }
+}
