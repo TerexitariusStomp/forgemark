@@ -1,0 +1,31 @@
+{
+  "cli_version": "0.11.5-nightly.202610140625.065c76361",
+  "checkpoint_id": "5d1724b96c96",
+  "strategy": "manual-commit",
+  "branch": "push-option",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "cmd/forgemark/main.go",
+    "internal/bench/agent.go",
+    "internal/bench/endpoint.go",
+    "internal/bench/runner.go",
+    "internal/bench/runner_test.go",
+    "internal/bench/session.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/5d/1724b96c96/0/metadata.json",
+      "transcript": "/5d/1724b96c96/0/full.jsonl",
+      "compact_transcript": "/5d/1724b96c96/0/transcript.jsonl",
+      "content_hash": "/5d/1724b96c96/0/content_hash.txt",
+      "prompt": "/5d/1724b96c96/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 24,
+    "cache_creation_tokens": 11511,
+    "cache_read_tokens": 3931308,
+    "output_tokens": 5509,
+    "api_call_count": 12
+  }
+}
