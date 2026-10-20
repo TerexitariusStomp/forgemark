@@ -2,6 +2,7 @@ package bench
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"math/rand"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/go-git/go-git/v6/backend"
 	formatcfg "github.com/go-git/go-git/v6/plumbing/format/config"
@@ -81,4 +83,76 @@ func TestAgentPushSendsPushOptions(t *testing.T) {
 			}
 		}
 	}
+}
+
+// receivePackAdvertisement is a smart-HTTP receive-pack info/refs reply for an
+// empty repo advertising caps.
+func receivePackAdvertisement(caps string) string {
+	pkt := func(s string) string { return fmt.Sprintf("%04x%s", len(s)+4, s) }
+	return pkt("# service=git-receive-pack\n") + "0000" +
+		pkt("0000000000000000000000000000000000000000 capabilities^{}\x00"+caps+"\n") + "0000"
+}
+
+func TestAdvertisesPushOptions(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		caps string
+		want bool
+	}{
+		{"report-status delete-refs push-options", true},
+		{"report-status delete-refs", false},
+		{"report-status push-optionsx", false},
+	} {
+		got, err := advertisesPushOptions([]byte(receivePackAdvertisement(tc.caps)))
+		if err != nil {
+			t.Fatalf("caps %q: %v", tc.caps, err)
+		}
+		if got != tc.want {
+			t.Errorf("caps %q: advertisesPushOptions = %v, want %v", tc.caps, got, tc.want)
+		}
+	}
+	if _, err := advertisesPushOptions([]byte("<html>not git</html>")); err == nil {
+		t.Error("a non-git reply must be an error, not a missing capability")
+	}
+}
+
+// go-git drops push options the server doesn't advertise and the push still
+// succeeds, so the run must refuse to start rather than measure pushes that
+// differ from the ones requested.
+func TestNewRunnerRequiresPushOptionsCapability(t *testing.T) {
+	t.Parallel()
+
+	noCaps := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/x-git-receive-pack-advertisement")
+		_, _ = io.WriteString(w, receivePackAdvertisement("report-status delete-refs"))
+	}))
+	defer noCaps.Close()
+	withCaps, _ := receivePackBodies(t)
+
+	w := Workload{
+		Strategy: "branch", Concurrency: []int{1}, Duration: time.Second,
+		Commit: CommitConfig{FilesMin: 1, FilesMax: 1, FileSize: 1},
+	}
+	target := func(remote string) Target {
+		return Target{Remote: remote, Repos: []string{"repo.git"}, Secret: "s"}
+	}
+
+	if r, err := NewRunner(t.Context(), target(noCaps.URL), w, nil); err != nil {
+		t.Fatalf("without push options the capability must not be probed: %v", err)
+	} else {
+		r.Close()
+	}
+
+	w.PushOptions = []string{"ci.skip"}
+	_, err := NewRunner(t.Context(), target(noCaps.URL), w, nil)
+	if err == nil || !strings.Contains(err.Error(), "push-options") {
+		t.Fatalf("NewRunner against a server without push-options = %v, want a push-options error", err)
+	}
+
+	r, err := NewRunner(t.Context(), target(withCaps.URL), w, nil)
+	if err != nil {
+		t.Fatalf("NewRunner against a server advertising push-options: %v", err)
+	}
+	r.Close()
 }

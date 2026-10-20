@@ -70,6 +70,12 @@ func NewRunner(ctx context.Context, t Target, w Workload, sink Sink) (*Runner, e
 		return nil, err
 	}
 	r := &Runner{target: t, w: w, creds: creds, ep: ep, httpc: httpc, sink: sink, levelsLeft: len(w.Concurrency)}
+	if len(w.PushOptions) > 0 {
+		if err := requirePushOptions(ctx, httpc, ep.nodes, t.Repos, creds); err != nil {
+			r.Close()
+			return nil, err
+		}
+	}
 	if t.TokenURL != "" || t.Jurisdiction != "" {
 		// Only Entire's account token bounds the run. After discovery, so
 		// its time counts against the token.
