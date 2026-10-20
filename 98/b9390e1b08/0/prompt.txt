@@ -1,0 +1,15 @@
+Review Trail findings:
+https://entire.io/gh/entireio/-/trails/2354/changes/forgemark/9
+
+https://entire.io/gh/entireio/-/trails/2355/changes/forgemark/10
+
+---
+
+Just ran a benchmark with the drain-level-end with that last commit:
+c=64   push_ok=6705   push/s=55.9     p50=1114.1  p95=1466.7   p99=1658.3   max=2112.2   cas=0 err=0
+
+Check with datadog the impact on cancellations
+
+---
+
+do number 1, then commit

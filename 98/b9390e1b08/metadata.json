@@ -1,0 +1,32 @@
+{
+  "cli_version": "0.11.5-nightly.202610140625.065c76361",
+  "checkpoint_id": "98b9390e1b08",
+  "strategy": "manual-commit",
+  "branch": "drain-level-end",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "internal/bench/agent.go",
+    "internal/bench/agent_test.go",
+    "internal/bench/session.go",
+    "internal/server/collector.go",
+    "internal/server/collector_bench_test.go",
+    "internal/server/collector_test.go",
+    "internal/server/runmgr.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/98/b9390e1b08/0/metadata.json",
+      "transcript": "/98/b9390e1b08/0/full.jsonl",
+      "compact_transcript": "/98/b9390e1b08/0/transcript.jsonl",
+      "content_hash": "/98/b9390e1b08/0/content_hash.txt",
+      "prompt": "/98/b9390e1b08/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 116,
+    "cache_creation_tokens": 111471,
+    "cache_read_tokens": 14546180,
+    "output_tokens": 30730,
+    "api_call_count": 58
+  }
+}
