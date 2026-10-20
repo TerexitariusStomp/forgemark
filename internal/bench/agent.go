@@ -48,6 +48,7 @@ type agent struct {
 
 	repo    *git.Repository
 	samples []Sample
+	est     [OpClone + 1]time.Duration // smoothed latency per OpKind (see observe)
 }
 
 // record appends a sample to the agent's authoritative post-hoc log and, when
@@ -55,9 +56,30 @@ type agent struct {
 // through here.
 func (a *agent) record(s Sample) {
 	a.samples = append(a.samples, s)
+	if s.Dur > 0 {
+		a.observe(s.Op, s.Dur)
+	}
 	if a.sink != nil {
 		a.sink.OnSample(s)
 	}
+}
+
+// observe folds one measured duration into the op's latency estimate. The
+// estimate rises at once to a slower sample but decays slowly towards faster
+// ones. Latency growing because requests are queueing on the server is then
+// reflected immediately, and the agent errs towards stopping early rather than
+// starting an op the window end would cancel.
+func (a *agent) observe(op OpKind, d time.Duration) {
+	if e := a.est[op]; e > 0 {
+		d = max(d, e+(d-e)/4)
+	}
+	a.est[op] = d
+}
+
+// fits reports whether an op of kind op started now is expected to finish
+// before end. With nothing observed yet it always fits.
+func (a *agent) fits(op OpKind, end time.Time) bool {
+	return time.Now().Add(a.est[op]).Before(end)
 }
 
 // CommitConfig is the subset of run config an agent needs.
@@ -113,21 +135,23 @@ func (a *agent) initRepo() error {
 	return nil
 }
 
-// run dispatches the agent's configured strategy until ctx is cancelled.
-// start anchors sample offsets so the caller can drop the warm-up window
-// afterwards.
-func (a *agent) run(ctx context.Context, start time.Time) {
+// run dispatches the agent's configured strategy until the window ends or ctx
+// is cancelled. start anchors sample offsets so the caller can drop the
+// warm-up window afterwards. No op starts unless it is expected to finish by
+// end, so the window closing doesn't cancel a burst of in-flight requests.
+// ctx is the hard stop for ops that overrun their estimate.
+func (a *agent) run(ctx context.Context, start, end time.Time) {
 	if a.clone != nil {
-		a.runClones(ctx, start)
+		a.runClones(ctx, start, end)
 		return
 	}
 	if a.sess != nil {
-		a.runSessions(ctx, start)
+		a.runSessions(ctx, start, end)
 		return
 	}
 	rng := rand.New(rand.NewSource(int64(a.id)*1_000_003 + 1)) //nolint:gosec // synthetic load content, not security-sensitive
 	iter := 0
-	for ctx.Err() == nil {
+	for ctx.Err() == nil && a.fits(OpPush, end) {
 		if iter > 0 && iter%resetEvery == 0 {
 			if err := a.initRepo(); err != nil {
 				a.record(Sample{Offset: time.Since(start), Res: OutcomeErr, Msg: err.Error()})

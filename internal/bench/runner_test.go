@@ -34,15 +34,15 @@ func TestTokenCovers(t *testing.T) {
 	if err := r.tokenCovers(now.Add(5 * time.Minute)); err == nil {
 		t.Fatal("10m left cannot cover an 11m level")
 	}
-	// 11m45s covers an 11m level plus skew, but not a session
+	// 12m15s covers an 11m level plus drain and skew, but not a session
 	// level's post-window ref cleanup on top.
-	r.tokenExp = now.Add(11*time.Minute + 45*time.Second)
+	r.tokenExp = now.Add(12*time.Minute + 15*time.Second)
 	if err := r.tokenCovers(now); err != nil {
-		t.Fatalf("11m45s covers a branch level plus skew: %v", err)
+		t.Fatalf("12m15s covers a branch level plus drain and skew: %v", err)
 	}
 	r.w.Strategy = "session"
 	if err := r.tokenCovers(now); err == nil {
-		t.Fatal("11m45s cannot also cover session cleanup")
+		t.Fatal("12m15s cannot also cover session cleanup")
 	}
 	r.tokenExp = time.Time{}
 	if err := r.tokenCovers(now); err != nil {

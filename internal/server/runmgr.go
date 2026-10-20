@@ -832,7 +832,8 @@ func (r *Run) emitBucket(force bool) {
 	measStart := r.windowStart.Add(r.bw.Warmup)
 	measEnd := measStart.Add(r.bw.Duration)
 	// A periodic tick emits only inside an open window. measuring stays true
-	// through RunLevel's post-window session-ref cleanup (up to 30s), so also
+	// through RunLevel's post-window drain of in-flight ops and session-ref
+	// cleanup (up to 30s each), so also
 	// gate on the deadline: past measEnd the ticks are cleanup-time buckets with
 	// zero duration and stale percentiles, which consumers would misread. The
 	// forced tail flush (force=true) still emits the window's real remainder.

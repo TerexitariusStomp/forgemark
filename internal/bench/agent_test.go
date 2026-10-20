@@ -2,6 +2,7 @@ package bench
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"math/rand"
@@ -10,6 +11,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -155,4 +157,86 @@ func TestNewRunnerRequiresPushOptionsCapability(t *testing.T) {
 		t.Fatalf("NewRunner against a server advertising push-options: %v", err)
 	}
 	r.Close()
+}
+
+func TestAgentFitsUsesObservedLatency(t *testing.T) {
+	t.Parallel()
+
+	a := &agent{}
+	now := time.Now()
+	if !a.fits(OpPush, now.Add(time.Millisecond)) {
+		t.Fatal("an agent with no observed latency must start its first op")
+	}
+	a.record(Sample{Op: OpPush, Dur: 2 * time.Second})
+	if a.fits(OpPush, now.Add(time.Second)) {
+		t.Fatal("a 2s push must not start with 1s left in the window")
+	}
+	if !a.fits(OpPush, now.Add(3*time.Second)) {
+		t.Fatal("a 2s push must start with 3s left in the window")
+	}
+	if !a.fits(OpClone, now.Add(time.Second)) {
+		t.Fatal("push latency must not gate clones")
+	}
+}
+
+func TestAgentLatencyEstimateRisesFastAndDecaysSlowly(t *testing.T) {
+	t.Parallel()
+
+	a := &agent{}
+	a.record(Sample{Op: OpPush, Dur: time.Second})
+	a.record(Sample{Op: OpPush, Dur: 3 * time.Second})
+	if got := a.est[OpPush]; got != 3*time.Second {
+		t.Fatalf("estimate after a slower push = %s, want 3s", got)
+	}
+	a.record(Sample{Op: OpPush, Dur: time.Second})
+	if got := a.est[OpPush]; got != 2500*time.Millisecond {
+		t.Fatalf("estimate after a faster push = %s, want 2.5s", got)
+	}
+	a.record(Sample{Op: OpPush, Res: OutcomeErr})
+	if got := a.est[OpPush]; got != 2500*time.Millisecond {
+		t.Fatalf("a sample without a duration moved the estimate to %s", got)
+	}
+}
+
+// A slow server must not see its in-flight requests cancelled when the
+// window closes: the agent stops starting pushes it cannot finish in time.
+func TestAgentStopsBeforeWindowEnd(t *testing.T) {
+	t.Parallel()
+
+	const latency = 200 * time.Millisecond
+	var requests, cancelled atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		select {
+		case <-time.After(latency):
+			http.Error(w, "slow", http.StatusInternalServerError)
+		case <-r.Context().Done():
+			cancelled.Add(1)
+		}
+	}))
+
+	a, err := newAgent(0, "repo.git", srv.URL, "refs/forgemark/fmX-c1-a0", formatcfg.SHA1,
+		&CommitConfig{FilesMin: 1, FilesMax: 1, FileSize: 16},
+		staticCreds{username: "u", password: "p"}, srv.Client(), nil, nil, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := time.Now()
+	end := start.Add(5*latency + latency/2)
+	ctx, cancel := context.WithDeadline(context.Background(), end.Add(10*latency))
+	defer cancel()
+	a.run(ctx, start, end)
+	srv.Close()
+
+	if requests.Load() < 3 {
+		t.Fatalf("server saw %d requests, want the window to keep the agent busy", requests.Load())
+	}
+	if n := cancelled.Load(); n != 0 {
+		t.Fatalf("%d requests were cancelled at the window end", n)
+	}
+	for _, s := range a.samples {
+		if s.Offset+s.Dur > end.Sub(start)+latency {
+			t.Fatalf("sample at %s took %s, running well past the %s window", s.Offset, s.Dur, end.Sub(start))
+		}
+	}
 }
