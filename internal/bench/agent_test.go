@@ -240,3 +240,40 @@ func TestAgentStopsBeforeWindowEnd(t *testing.T) {
 		}
 	}
 }
+
+// An op that overruns the window finishes without being cancelled, but is not
+// recorded: the live series would pile every such completion into the tail
+// bucket, whose duration ends at the window end, and spike its rate.
+func TestAgentDropsOpsFinishingAfterWindowEnd(t *testing.T) {
+	t.Parallel()
+
+	const latency = 300 * time.Millisecond
+	var cancelled atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-time.After(latency):
+			http.Error(w, "slow", http.StatusInternalServerError)
+		case <-r.Context().Done():
+			cancelled.Add(1)
+		}
+	}))
+
+	a, err := newAgent(0, "repo.git", srv.URL, "refs/forgemark/fmX-c1-a0", formatcfg.SHA1,
+		&CommitConfig{FilesMin: 1, FilesMax: 1, FileSize: 16},
+		staticCreds{username: "u", password: "p"}, srv.Client(), nil, nil, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := time.Now()
+	ctx, cancel := context.WithDeadline(context.Background(), start.Add(10*latency))
+	defer cancel()
+	a.run(ctx, start, start.Add(latency/3))
+	srv.Close()
+
+	if n := cancelled.Load(); n != 0 {
+		t.Fatalf("%d requests were cancelled", n)
+	}
+	if len(a.samples) != 0 {
+		t.Fatalf("recorded %d samples for an op that finished after the window end", len(a.samples))
+	}
+}
