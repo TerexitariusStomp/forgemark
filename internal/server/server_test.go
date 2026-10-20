@@ -2,6 +2,7 @@ package server
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -532,5 +533,38 @@ func TestHistoryServesLegacyDocs(t *testing.T) {
 		if res.StatusCode == http.StatusOK {
 			t.Fatalf("GET history/%s succeeded, want rejection", bad)
 		}
+	}
+}
+
+// History reads whole result docs, which a long run makes large, and remote
+// viewers can reach it on an exposed bind. Concurrent reads are capped so a
+// burst of requests can't multiply that memory.
+func TestHistoryReadsAreBounded(t *testing.T) {
+	t.Parallel()
+	s, ts, _ := newTestServer(t)
+
+	get := func() error {
+		ctx, cancel := context.WithTimeout(t.Context(), 200*time.Millisecond)
+		defer cancel()
+		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, ts.URL+"/api/history", nil)
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return err
+		}
+		_ = res.Body.Close()
+		if res.StatusCode != http.StatusOK {
+			return fmt.Errorf("HTTP %d", res.StatusCode)
+		}
+		return nil
+	}
+	for range cap(s.historySlots) {
+		s.historySlots <- struct{}{}
+	}
+	if err := get(); err == nil {
+		t.Fatal("history read ran with every slot taken")
+	}
+	<-s.historySlots
+	if err := get(); err != nil {
+		t.Fatalf("history read with a free slot: %v", err)
 	}
 }

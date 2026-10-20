@@ -397,7 +397,30 @@ func newHTTPClient(insecure bool, maxConns int) *http.Client {
 	// value falls off net/http's known-transport fast path and spawns a
 	// cancellation goroutine per request, skewing the very operations
 	// forgemark measures. uaTransport enforces the timeout instead.
-	return &http.Client{Transport: &uaTransport{base: tr, timeout: 120 * time.Second}}
+	return &http.Client{
+		Transport:     &uaTransport{base: tr, timeout: 120 * time.Second},
+		CheckRedirect: sameOriginRedirect,
+	}
+}
+
+// sameOriginRedirect keeps the credential on the origin the operator
+// configured. Every request carries Basic auth up front, and Go copies it to a
+// redirect target on any port of the same hostname or on a subdomain. go-git
+// follows the initial info/refs redirect, as git does, and runs this hook
+// after its own policy. A redirect within the origin (GitLab: repo to
+// repo.git) is followed. One that changes scheme, hostname or port is refused.
+func sameOriginRedirect(req *http.Request, via []*http.Request) error {
+	first := via[0].URL
+	if req.URL.Scheme != first.Scheme ||
+		!strings.EqualFold(req.URL.Hostname(), first.Hostname()) ||
+		effectivePort(req.URL) != effectivePort(first) {
+		return fmt.Errorf("refusing to follow a redirect to %s://%s: the credential is only sent to %s://%s",
+			req.URL.Scheme, req.URL.Host, first.Scheme, first.Host)
+	}
+	if len(via) >= 10 {
+		return errors.New("stopped after 10 redirects")
+	}
+	return nil
 }
 
 // uaToken identifies forgemark in User-Agent headers. Binaries built from a
@@ -439,8 +462,8 @@ var uaToken = func() string {
 //
 // It also imposes the request timeout as a context deadline (see
 // newHTTPClient). Unlike Client.Timeout the budget is per attempt, not per
-// redirect chain; forgemark's endpoints don't redirect, so that difference is
-// theoretical.
+// redirect chain. Redirects are rare and stay within one origin (see
+// sameOriginRedirect), so that difference is theoretical.
 type uaTransport struct {
 	base    *http.Transport
 	timeout time.Duration
