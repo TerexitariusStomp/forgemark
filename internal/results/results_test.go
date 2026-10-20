@@ -179,3 +179,24 @@ func TestListDoesNotDecodeSeries(t *testing.T) {
 		t.Fatalf("List allocated %d bytes for a %d-byte doc, want under 1.5x the file size", alloc, info.Size())
 	}
 }
+
+// A doc the history view can't open must not be listed. Levels are small, so
+// the summary decodes them with their real type, as Load does.
+func TestListSkipsDocsWithMalformedLevels(t *testing.T) {
+	dir := t.TempDir()
+	_ = os.WriteFile(filepath.Join(dir, "forgemark-target.json"), []byte(`{"format":2,"run_id":"t","targets":[{"name":"a","levels":["bad"]}]}`), 0o600)
+	_ = os.WriteFile(filepath.Join(dir, "forgemark-legacy.json"), []byte(`{"run_id":"l","target":"x","levels":["bad"]}`), 0o600)
+
+	for _, file := range []string{"forgemark-target.json", "forgemark-legacy.json"} {
+		if _, err := Load(dir, file); err == nil {
+			t.Fatalf("Load(%s) succeeded, want a decode error", file)
+		}
+	}
+	list, err := List(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 0 {
+		t.Fatalf("List = %+v, want no docs that Load rejects", list)
+	}
+}

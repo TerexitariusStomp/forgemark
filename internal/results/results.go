@@ -168,7 +168,9 @@ func List(dir string) ([]Summary, error) {
 
 // summaryDoc is the part of a Doc that a history listing needs. Decoding into
 // it skips each target's per-second Series, which is the bulk of a long run's
-// doc, so a listing costs about one read of the file.
+// doc, so a listing costs about one read of the file. Levels are small and keep
+// their real type, so a doc whose levels Load would reject is not listed. A doc
+// damaged only in its Series still lists, and opening it reports the error.
 type summaryDoc struct {
 	Format       int    `json:"format"`
 	RunID        string `json:"run_id"`
@@ -176,13 +178,13 @@ type summaryDoc struct {
 	RefNamespace string `json:"ref_namespace"`
 	State        string `json:"state"`
 	Targets      []struct {
-		Name   string            `json:"name"`
-		Levels []json.RawMessage `json:"levels"`
+		Name   string              `json:"name"`
+		Levels []bench.LevelResult `json:"levels"`
 	} `json:"targets"`
 
 	// format 1 (legacy CLI)
-	Target string            `json:"target"`
-	Levels []json.RawMessage `json:"levels"`
+	Target string              `json:"target"`
+	Levels []bench.LevelResult `json:"levels"`
 }
 
 // readSummary summarizes the doc at path, applying the same legacy
