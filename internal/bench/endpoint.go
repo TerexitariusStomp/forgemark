@@ -1,6 +1,7 @@
 package bench
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -11,6 +12,9 @@ import (
 	"strings"
 
 	formatcfg "github.com/go-git/go-git/v6/plumbing/format/config"
+	"github.com/go-git/go-git/v6/plumbing/format/pktline"
+	"github.com/go-git/go-git/v6/plumbing/protocol/capability"
+	"github.com/go-git/go-git/v6/plumbing/protocol/packp"
 	githttp "github.com/go-git/go-git/v6/plumbing/transport/http"
 	"golang.org/x/net/publicsuffix"
 )
@@ -202,6 +206,57 @@ func probeInfoRefs(ctx context.Context, c *http.Client, node, repo string, auth 
 	}
 	return nil, nil, fmt.Errorf("info/refs probe: HTTP %d: %s%s", resp.StatusCode,
 		redactSecrets(strings.TrimSpace(string(body)), authForms(auth.Username, auth.Password)...), hint)
+}
+
+// requirePushOptions fails unless every node advertises the push-options
+// capability for every repo. go-git drops push options a server doesn't
+// advertise and the push still succeeds, so the run would otherwise measure
+// pushes that differ from the ones requested (a dropped ci.skip runs CI on
+// every push). The capability is per repo in git (receive.advertisePushOptions),
+// hence every pair is probed.
+func requirePushOptions(ctx context.Context, c *http.Client, nodes, repos []string, creds credentialProvider) error {
+	for _, repo := range repos {
+		auth, err := creds.basicAuth(ctx, repo)
+		if err != nil {
+			return err
+		}
+		for _, node := range nodes {
+			hdr, body, err := probeInfoRefs(ctx, c, node, repo, auth)
+			if err != nil {
+				return fmt.Errorf("push-options probe: %w", err)
+			}
+			if hdr.Get("Location") != "" {
+				return fmt.Errorf("push-options probe: %s redirected; refusing to follow", verbatimURLFor(node, repo))
+			}
+			ok, err := advertisesPushOptions(body)
+			if err != nil {
+				return fmt.Errorf("push-options probe: %s: %w", verbatimURLFor(node, repo), err)
+			}
+			if !ok {
+				return fmt.Errorf("%s does not advertise the push-options capability, so -push-options would be silently dropped", verbatimURLFor(node, repo))
+			}
+		}
+	}
+	return nil
+}
+
+// advertisesPushOptions reports whether a smart-HTTP receive-pack info/refs
+// reply advertises the push-options capability.
+func advertisesPushOptions(body []byte) (bool, error) {
+	r := bytes.NewReader(body)
+	// Smart HTTP prefixes the advertisement with a service line and a flush.
+	if _, p, err := pktline.ReadLine(r); err == nil && bytes.HasPrefix(p, []byte("# service=")) {
+		if l, _, err := pktline.ReadLine(r); err != nil || l != pktline.Flush {
+			return false, errors.New("malformed service header in receive-pack advertisement")
+		}
+	} else {
+		r.Reset(body)
+	}
+	var adv packp.AdvRefs
+	if err := adv.Decode(r); err != nil {
+		return false, fmt.Errorf("decode receive-pack advertisement: %w", err)
+	}
+	return adv.Capabilities.Supports(capability.PushOptions), nil
 }
 
 // redirectNode maps a discovery Location onto the pinned node it names.

@@ -38,12 +38,13 @@ type agent struct {
 	ref      string // destination ref, e.g. refs/forgemark/<run>-c8-a7 (see DestRef)
 	objFmt   formatcfg.ObjectFormat
 
-	cfg   *CommitConfig
-	creds credentialProvider
-	httpc *http.Client
-	clone *cloneConfig   // non-nil → "clone" strategy (clone-only loop)
-	sess  *sessionConfig // non-nil → "session" strategy (clone+push loop)
-	sink  Sink           // optional live observer; nil on the CLI path
+	cfg      *CommitConfig
+	creds    credentialProvider
+	httpc    *http.Client
+	pushOpts []string       // push options sent with every push (git push -o)
+	clone    *cloneConfig   // non-nil → "clone" strategy (clone-only loop)
+	sess     *sessionConfig // non-nil → "session" strategy (clone+push loop)
+	sink     Sink           // optional live observer; nil on the CLI path
 
 	repo    *git.Repository
 	samples []Sample
@@ -79,10 +80,10 @@ const resetEvery = 128
 // newAgent builds an agent. In branch/repo mode it initialises its in-memory
 // repo up front (object format matched to the remote). In clone/session mode
 // the repo is created per clone by the clone loop, so init is skipped.
-func newAgent(id int, repoPath, node, ref string, objFmt formatcfg.ObjectFormat, cfg *CommitConfig, creds credentialProvider, httpc *http.Client, clone *cloneConfig, sess *sessionConfig, sink Sink) (*agent, error) {
+func newAgent(id int, repoPath, node, ref string, objFmt formatcfg.ObjectFormat, cfg *CommitConfig, creds credentialProvider, httpc *http.Client, pushOpts []string, clone *cloneConfig, sess *sessionConfig, sink Sink) (*agent, error) {
 	a := &agent{
 		id: id, repoPath: repoPath, node: node, ref: ref, objFmt: objFmt,
-		cfg: cfg, creds: creds, httpc: httpc, clone: clone, sess: sess, sink: sink,
+		cfg: cfg, creds: creds, httpc: httpc, pushOpts: pushOpts, clone: clone, sess: sess, sink: sink,
 	}
 	if clone == nil && sess == nil {
 		if err := a.initRepo(); err != nil {
@@ -206,6 +207,7 @@ func (a *agent) push(ctx context.Context) error {
 		RemoteName: "origin",
 		RefSpecs:   []config.RefSpec{config.RefSpec("+refs/heads/master:" + a.ref)},
 		Force:      true, // each agent owns its ref; force keeps numbers clean of spurious non-ff
+		Options:    a.pushOpts,
 		ClientOptions: []gitclient.Option{
 			gitclient.WithHTTPClient(a.httpc),
 			gitclient.WithHTTPAuth(auth),

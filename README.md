@@ -282,6 +282,7 @@ modest, or point `-remote` at a self-managed GitLab you control.
 | `-strategy` | `branch` | `branch` \| `repo` \| `clone` \| `session` |
 | `-ref-namespace` | `refs/forgemark/` | where pushed refs land; the default stays off `refs/heads/` so the forge's post-receive pipeline (search ingestion, CI, webhooks) never sees bench pushes. `refs/heads/` pushes real branches |
 | `-branch-prefix` | — | prepended verbatim inside the namespace, before the run ID (e.g. `bench/` → `refs/forgemark/bench/fm...`); groups refs for easy cleanup |
+| `-push-options` | — | push option sent with every push, like `git push -o` (e.g. `ci.skip`); repeat the flag for several. The run refuses to start unless every repo advertises the `push-options` capability, since go-git would otherwise drop them silently |
 | `-concurrency` | `1,8,32,128` | swept sequentially, one row each |
 | `-duration` / `-warmup` | `60s` / `10s` | measured window / discarded ramp |
 | `-files-min`/`-files-max`/`-file-size` | `1`/`10`/`2048` | commit shape; ignored by `clone` |

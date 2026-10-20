@@ -77,6 +77,7 @@ type Workload struct {
 	Duration     time.Duration
 	Warmup       time.Duration
 	Commit       CommitConfig
+	PushOptions  []string // sent with every push, like git push -o
 
 	// session/clone strategies
 	SessionCommits int
@@ -135,6 +136,12 @@ func (w Workload) Validate() error {
 		// overflow this aggregate check.
 		if int64(w.Commit.FilesMax)*int64(w.Commit.FileSize) > maxCommitBytes {
 			return fmt.Errorf("-files-max × -file-size must be <= %dMiB per commit", maxCommitBytes>>20)
+		}
+	}
+	// Push options are newline-delimited on the wire, as git itself enforces.
+	for _, o := range w.PushOptions {
+		if strings.ContainsAny(o, "\n\x00") {
+			return fmt.Errorf("invalid -push-options %q: must not contain newline or NUL", o)
 		}
 	}
 	// Validate the assembled ref, not the parts alone: validity is context-dependent

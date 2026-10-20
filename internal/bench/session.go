@@ -193,6 +193,7 @@ func (a *agent) pushRef(ctx context.Context, src plumbing.ReferenceName, dst str
 		RemoteName: "origin",
 		RefSpecs:   []config.RefSpec{config.RefSpec("+" + src.String() + ":" + dst)},
 		Force:      true,
+		Options:    a.pushOpts,
 		ClientOptions: []gitclient.Option{
 			gitclient.WithHTTPClient(a.httpc),
 			gitclient.WithHTTPAuth(auth),
@@ -224,6 +225,7 @@ func (a *agent) deleteRef(dst string) {
 	if err := a.repo.PushContext(ctx, &git.PushOptions{
 		RemoteName: "origin",
 		RefSpecs:   []config.RefSpec{config.RefSpec(":" + dst)},
+		Options:    a.pushOpts,
 		ClientOptions: []gitclient.Option{
 			gitclient.WithHTTPClient(a.httpc),
 			gitclient.WithHTTPAuth(auth),

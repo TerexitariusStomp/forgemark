@@ -198,6 +198,10 @@ func parseFlags() (*cliConfig, error) {
 	flag.StringVar(&cfg.out, "out", "", "write JSON results here (default: results/forgemark-<id>.json)")
 	flag.IntVar(&cfg.workload.SessionCommits, "session-commits", 5, "session strategy: commit+push checkpoints per cloned session")
 	flag.IntVar(&cfg.workload.CloneDepth, "clone-depth", 1, "clone/session strategy: shallow clone depth (1=tip; 0=full history)")
+	flag.Func("push-options", "push option sent with every push, like git push -o (repeatable; one option per flag, so values may contain commas). The run refuses to start unless the server advertises push-options", func(v string) error {
+		cfg.workload.PushOptions = append(cfg.workload.PushOptions, v)
+		return nil
+	})
 	flag.StringVar(&cfg.workload.BaseRef, "base-ref", "", "clone/session strategy: branch to clone — bare name (main) or full ref (refs/heads/main); default: remote default branch")
 
 	// entiredb: presence of -token-url/-jurisdiction selects the entiredb path.
