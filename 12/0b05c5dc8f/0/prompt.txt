@@ -1,0 +1,17 @@
+The number of pushes/s dropped based on the changes in this branch. I've started a new branch dropping everything but the cancellation counter, fix the rebase conflicts
+
+---
+
+go ahead
+
+---
+
+fix rebase conflicts
+
+---
+
+create the missing push-options fix as a separate branch
+
+---
+
+commit
