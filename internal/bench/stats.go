@@ -66,6 +66,7 @@ type LevelResult struct {
 	OK          int     `json:"ok"`     // successful primary operations
 	CASFailures int     `json:"cas_failures"`
 	OtherErrors int     `json:"other_errors"`
+	Cancelled   int     `json:"cancelled"`   // ops cut off by the hard deadline or a cancelled run, any kind. Not samples
 	OpsPerSec   float64 `json:"ops_per_sec"` // OK / window
 	P50ms       float64 `json:"p50_ms"`
 	P95ms       float64 `json:"p95_ms"`

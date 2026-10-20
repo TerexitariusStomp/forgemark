@@ -255,14 +255,18 @@ func (r *Runner) RunLevel(ctx context.Context, c int, barrier *StartBarrier) (Le
 	}
 
 	var all []Sample
+	cancelled := 0
 	for _, a := range agents {
 		all = append(all, a.samples...)
+		cancelled += a.cancelled
 	}
 	reposUsed := 1
 	if r.w.Strategy == "repo" {
 		reposUsed = min(c, len(r.target.Repos))
 	}
-	return summarize(all, c, r.w.Strategy, reposUsed, len(r.ep.nodes), r.w.Warmup, r.w.Duration, r.w.CommitDesc()), nil
+	res := summarize(all, c, r.w.Strategy, reposUsed, len(r.ep.nodes), r.w.Warmup, r.w.Duration, r.w.CommitDesc())
+	res.Cancelled = cancelled
+	return res, nil
 }
 
 func setupGeneric(t Target) (credentialProvider, *endpoint, error) {

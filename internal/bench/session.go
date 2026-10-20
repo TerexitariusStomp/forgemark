@@ -44,6 +44,7 @@ func (a *agent) runClones(ctx context.Context, start, end time.Time) {
 		t0 := time.Now()
 		_, _, err := a.cloneSession(ctx)
 		if ctx.Err() != nil {
+			a.cancelled++
 			return
 		}
 		res := readOutcome(err)
@@ -61,6 +62,7 @@ func (a *agent) runSessions(ctx context.Context, start, end time.Time) {
 		t0 := time.Now()
 		repo, branch, err := a.cloneSession(ctx)
 		if ctx.Err() != nil {
+			a.cancelled++
 			return
 		}
 		res := readOutcome(err)
@@ -86,6 +88,7 @@ func (a *agent) runSessions(ctx context.Context, start, end time.Time) {
 				pushed = true // the branch now exists on the remote
 			}
 			if ctx.Err() != nil {
+				a.cancelled++
 				break // window closed mid-push: stop, but still clean up sessRef
 			}
 			o := classify(perr)

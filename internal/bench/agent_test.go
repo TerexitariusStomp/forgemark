@@ -281,3 +281,38 @@ func TestAgentRecordsOpsFinishingDuringDrain(t *testing.T) {
 		t.Fatalf("sample finished at %s, want it to overrun the %s window", s.Offset+s.Dur, end.Sub(start))
 	}
 }
+
+// An op cut off by the hard deadline is a cancellation the server sees. It
+// is not a sample, but the level reports how many there were, so the effect
+// of the drain on server-side cancellations is visible in the results.
+func TestAgentCountsCancelledOps(t *testing.T) {
+	t.Parallel()
+
+	const latency = 300 * time.Millisecond
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-time.After(latency):
+			http.Error(w, "slow", http.StatusInternalServerError)
+		case <-r.Context().Done():
+		}
+	}))
+
+	a, err := newAgent(0, "repo.git", srv.URL, "refs/forgemark/fmX-c1-a0", formatcfg.SHA1,
+		&CommitConfig{FilesMin: 1, FilesMax: 1, FileSize: 16},
+		staticCreds{username: "u", password: "p"}, srv.Client(), nil, nil, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := time.Now()
+	ctx, cancel := context.WithDeadline(context.Background(), start.Add(latency/3))
+	defer cancel()
+	a.run(ctx, start, start.Add(10*latency))
+	srv.Close()
+
+	if a.cancelled != 1 {
+		t.Fatalf("cancelled = %d, want the one op cut off by the deadline", a.cancelled)
+	}
+	if len(a.samples) != 0 {
+		t.Fatalf("recorded %d samples for a cancelled op", len(a.samples))
+	}
+}

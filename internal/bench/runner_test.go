@@ -213,3 +213,33 @@ func TestRunLevelSpansWindowWhenAgentsStopEarly(t *testing.T) {
 		t.Fatalf("RunLevel returned after %s, before the %s window ended", elapsed, r.w.Duration)
 	}
 }
+
+func TestRunLevelReportsCancelledOps(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-time.After(300 * time.Millisecond):
+			http.Error(w, "slow", http.StatusInternalServerError)
+		case <-r.Context().Done():
+		}
+	}))
+	defer srv.Close()
+	r := &Runner{
+		target:     Target{Repos: []string{"o/r"}},
+		w:          Workload{Strategy: "branch", Concurrency: []int{2}, Duration: 10 * time.Second, Commit: CommitConfig{FilesMin: 1, FilesMax: 1, FileSize: 1}},
+		creds:      staticCreds{username: "token", password: "secret"},
+		ep:         &endpoint{nodes: []string{srv.URL}, objFmt: formatcfg.SHA1},
+		httpc:      srv.Client(),
+		levelsLeft: 1,
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	res, err := r.RunLevel(ctx, 2, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Cancelled != 2 {
+		t.Fatalf("Cancelled = %d, want both agents' in-flight pushes", res.Cancelled)
+	}
+}

@@ -46,9 +46,10 @@ type agent struct {
 	sess     *sessionConfig // non-nil → "session" strategy (clone+push loop)
 	sink     Sink           // optional live observer; nil on the CLI path
 
-	repo    *git.Repository
-	samples []Sample
-	est     [OpClone + 1]time.Duration // smoothed latency per OpKind (see observe)
+	repo      *git.Repository
+	samples   []Sample
+	cancelled int                        // ops cut off by ctx, which the server saw as cancelled
+	est       [OpClone + 1]time.Duration // smoothed latency per OpKind (see observe)
 }
 
 // record appends a sample to the agent's authoritative post-hoc log and, when
@@ -176,8 +177,9 @@ func (a *agent) run(ctx context.Context, start, end time.Time) {
 		err := a.push(ctx)
 		dur := time.Since(t0)
 		// Don't record the attempt that lost the ctx-cancellation race; it's a
-		// truncated measurement, not real latency.
+		// truncated measurement, not real latency. Count it instead.
 		if ctx.Err() != nil {
+			a.cancelled++
 			break
 		}
 		o := classify(err)
