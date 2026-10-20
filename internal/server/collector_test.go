@@ -65,11 +65,31 @@ func TestCollectorResetClearsWindow(t *testing.T) {
 	c := &collector{}
 	c.OnSample(bench.Sample{Dur: ms(50), Res: bench.OutcomeOK})
 	c.snapshot()
-	c.reset(0)
+	c.reset(0, 0)
 	st := c.snapshot()
 	if st.OK != 0 || st.P50 != 0 {
 		t.Fatalf("after reset snapshot = %+v, want empty", st)
 	}
+}
+
+// Ops that overrun the window finish during the level's drain, after the
+// periodic ticks have stopped. Counting them live would pile every one into
+// the tail bucket, whose duration ends at the window end, and spike its rate.
+// They stay in the authoritative level result.
+func TestCollectorSkipsCompletionsAfterWindowEnd(t *testing.T) {
+	t.Parallel()
+
+	c := &collector{}
+	c.reset(time.Second, 3*time.Second)
+	c.OnSample(bench.Sample{Offset: 500 * time.Millisecond, Dur: ms(10), Res: bench.OutcomeOK})
+	c.OnSample(bench.Sample{Offset: 2 * time.Second, Dur: ms(900), Res: bench.OutcomeOK})
+	c.OnSample(bench.Sample{Offset: 2900 * time.Millisecond, Dur: ms(200), Res: bench.OutcomeOK})
+	c.OnSample(bench.Sample{Offset: 2900 * time.Millisecond, Op: bench.OpClone, Dur: ms(200), Res: bench.OutcomeOK})
+	st := c.snapshot()
+	if st.OK != 1 || st.CloneOK != 0 {
+		t.Fatalf("snapshot = %+v, want only the in-window push", st)
+	}
+	near(t, "p50", st.P50, 900)
 }
 
 // The histogram must clamp, not index out of range, at both extremes, and

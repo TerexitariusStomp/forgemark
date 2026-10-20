@@ -241,10 +241,10 @@ func TestAgentStopsBeforeWindowEnd(t *testing.T) {
 	}
 }
 
-// An op that overruns the window finishes without being cancelled, but is not
-// recorded: the live series would pile every such completion into the tail
-// bucket, whose duration ends at the window end, and spike its rate.
-func TestAgentDropsOpsFinishingAfterWindowEnd(t *testing.T) {
+// An op that overruns the window finishes during the drain instead of being
+// cancelled, and is recorded: it started inside the window, and dropping it
+// would hide real work and tail latency just when the server slows down.
+func TestAgentRecordsOpsFinishingDuringDrain(t *testing.T) {
 	t.Parallel()
 
 	const latency = 300 * time.Millisecond
@@ -265,15 +265,19 @@ func TestAgentDropsOpsFinishingAfterWindowEnd(t *testing.T) {
 		t.Fatal(err)
 	}
 	start := time.Now()
+	end := start.Add(latency / 3)
 	ctx, cancel := context.WithDeadline(context.Background(), start.Add(10*latency))
 	defer cancel()
-	a.run(ctx, start, start.Add(latency/3))
+	a.run(ctx, start, end)
 	srv.Close()
 
 	if n := cancelled.Load(); n != 0 {
 		t.Fatalf("%d requests were cancelled", n)
 	}
-	if len(a.samples) != 0 {
-		t.Fatalf("recorded %d samples for an op that finished after the window end", len(a.samples))
+	if len(a.samples) != 1 {
+		t.Fatalf("recorded %d samples, want the one op that finished during the drain", len(a.samples))
+	}
+	if s := a.samples[0]; s.Offset+s.Dur < end.Sub(start) {
+		t.Fatalf("sample finished at %s, want it to overrun the %s window", s.Offset+s.Dur, end.Sub(start))
 	}
 }

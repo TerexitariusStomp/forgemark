@@ -76,16 +76,6 @@ func (a *agent) observe(op OpKind, d time.Duration) {
 	a.est[op] = d
 }
 
-// windowClosed reports whether an op that just returned must go unrecorded. A
-// cancelled op is a truncated measurement, not real latency. One that finished
-// during the drain after end ran to completion, so the server saw no
-// cancellation, but it is outside the window: summarize would count it, and
-// the live series would pile every such completion into the tail bucket,
-// whose duration stops at end, spiking its rate.
-func windowClosed(ctx context.Context, end time.Time) bool {
-	return ctx.Err() != nil || time.Now().After(end)
-}
-
 // fits reports whether an op of kind op started now is expected to finish
 // before end. With nothing observed yet it always fits.
 func (a *agent) fits(op OpKind, end time.Time) bool {
@@ -185,7 +175,9 @@ func (a *agent) run(ctx context.Context, start, end time.Time) {
 		t0 := time.Now()
 		err := a.push(ctx)
 		dur := time.Since(t0)
-		if windowClosed(ctx, end) {
+		// Don't record the attempt that lost the ctx-cancellation race; it's a
+		// truncated measurement, not real latency.
+		if ctx.Err() != nil {
 			break
 		}
 		o := classify(err)

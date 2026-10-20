@@ -143,6 +143,7 @@ func histPercentiles(hists ...*latHist) (p50, p95, p99 float64) {
 type collector struct {
 	mu        sync.Mutex
 	warmup    time.Duration // samples before this offset are excluded (matches the level result)
+	end       time.Duration // samples completing after this offset are excluded. 0 means unbounded
 	cur       bucket
 	ring      [windowSecs]latHist // one closed second of OK push latencies per slot
 	cloneRing [windowSecs]latHist
@@ -188,6 +189,13 @@ func (c *collector) OnSample(s bench.Sample) {
 	// rolling percentiles, and persisted series match the authoritative level
 	// result, which excludes the warm-up window.
 	if s.Offset < c.warmup {
+		return
+	}
+	// An op that overran the window completes during the level's drain, when
+	// periodic ticks have stopped. The forced tail flush would count it
+	// against a bucket whose duration stops at the window end, spiking the
+	// rate. It still counts in the level result, which attributes ops by start.
+	if c.end > 0 && s.Offset+s.Dur > c.end {
 		return
 	}
 	if s.Op == bench.OpClone {
@@ -241,13 +249,14 @@ func (c *collector) snapshot() BucketStats {
 	return st
 }
 
-// reset clears the bucket and the rolling window and sets the warm-up boundary
-// for the level about to start, so percentiles never bleed across concurrency
-// levels and warm-up samples are excluded.
-func (c *collector) reset(warmup time.Duration) {
+// reset clears the bucket and the rolling window and sets the warm-up and
+// window-end boundaries for the level about to start, so percentiles never
+// bleed across concurrency levels and warm-up and drain samples are excluded.
+func (c *collector) reset(warmup, end time.Duration) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.warmup = warmup
+	c.end = end
 	c.cur = bucket{}
 	c.ring = [windowSecs]latHist{}
 	c.cloneRing = [windowSecs]latHist{}

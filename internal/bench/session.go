@@ -43,7 +43,7 @@ func (a *agent) runClones(ctx context.Context, start, end time.Time) {
 	for ctx.Err() == nil && a.fits(OpClone, end) {
 		t0 := time.Now()
 		_, _, err := a.cloneSession(ctx)
-		if windowClosed(ctx, end) {
+		if ctx.Err() != nil {
 			return
 		}
 		res := readOutcome(err)
@@ -60,7 +60,7 @@ func (a *agent) runSessions(ctx context.Context, start, end time.Time) {
 	for session := 0; ctx.Err() == nil && a.fits(OpClone, end); session++ {
 		t0 := time.Now()
 		repo, branch, err := a.cloneSession(ctx)
-		if windowClosed(ctx, end) {
+		if ctx.Err() != nil {
 			return
 		}
 		res := readOutcome(err)
@@ -85,7 +85,7 @@ func (a *agent) runSessions(ctx context.Context, start, end time.Time) {
 			if perr == nil {
 				pushed = true // the branch now exists on the remote
 			}
-			if windowClosed(ctx, end) {
+			if ctx.Err() != nil {
 				break // window closed mid-push: stop, but still clean up sessRef
 			}
 			o := classify(perr)

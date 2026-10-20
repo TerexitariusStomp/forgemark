@@ -640,7 +640,7 @@ func (r *Run) coordinate(m *RunManager) {
 		// returned (lwg.Wait below), so nothing races this reset.
 		r.mu.Lock()
 		for _, t := range alive {
-			t.col.reset(r.bw.Warmup)
+			t.col.reset(r.bw.Warmup, r.bw.Warmup+r.bw.Duration)
 		}
 		r.levelIdx = li
 		r.levelConc = c
