@@ -1,0 +1,7 @@
+Do two changes, in separate branches (create one for each):
+- avoid cancelling loads of operations during a perf test, if requests are queueing up, time it so that we stop producing new ones towards the end so that we avoid noisy cancellations
+- add the option so that push operations get a push-option. Add a --push-options flag to that effect.
+
+---
+
+yes, go ahead
