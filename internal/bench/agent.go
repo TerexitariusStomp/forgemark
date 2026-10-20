@@ -167,6 +167,11 @@ func (a *agent) run(ctx context.Context, start, end time.Time) {
 			iter++
 			continue
 		}
+		// Building the commit spent window time. Recheck, or a slow commit
+		// could start the push after end, outside the measured window.
+		if !a.fits(OpPush, end) {
+			break
+		}
 		t0 := time.Now()
 		err := a.push(ctx)
 		dur := time.Since(t0)

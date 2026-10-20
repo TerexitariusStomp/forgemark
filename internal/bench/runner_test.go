@@ -181,3 +181,35 @@ func TestUATransportEnforcesTimeout(t *testing.T) {
 		t.Fatalf("error = %v, want context.DeadlineExceeded", err)
 	}
 }
+
+// Agents stop early when the next push would overrun the window, but the
+// level must still span its configured window: the server closes the live
+// series when RunLevel returns, and summarize divides by the full duration.
+func TestRunLevelSpansWindowWhenAgentsStopEarly(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(300 * time.Millisecond)
+		http.Error(w, "slow", http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+	r := &Runner{
+		target:     Target{Repos: []string{"o/r"}},
+		w:          Workload{Strategy: "branch", Concurrency: []int{1}, Duration: 500 * time.Millisecond, Commit: CommitConfig{FilesMin: 1, FilesMax: 1, FileSize: 1}},
+		creds:      staticCreds{username: "token", password: "secret"},
+		ep:         &endpoint{nodes: []string{srv.URL}, objFmt: formatcfg.SHA1},
+		httpc:      srv.Client(),
+		levelsLeft: 1,
+	}
+	start := time.Now()
+	res, err := r.RunLevel(context.Background(), 1, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Pushes != 1 {
+		t.Fatalf("pushes = %d, want 1 (the second would overrun the window)", res.Pushes)
+	}
+	if elapsed := time.Since(start); elapsed < r.w.Duration {
+		t.Fatalf("RunLevel returned after %s, before the %s window ended", elapsed, r.w.Duration)
+	}
+}

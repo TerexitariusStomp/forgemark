@@ -77,6 +77,9 @@ func (a *agent) runSessions(ctx context.Context, start, end time.Time) {
 				a.record(Sample{Offset: time.Since(start), Res: OutcomeErr, Op: OpPush, Msg: err.Error()})
 				continue
 			}
+			if !a.fits(OpPush, end) {
+				break // the commit spent the remaining window. sessRef is still cleaned up
+			}
 			t1 := time.Now()
 			perr := a.pushRef(ctx, branch, sessRef)
 			if perr == nil {

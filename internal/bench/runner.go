@@ -244,6 +244,15 @@ func (r *Runner) RunLevel(ctx context.Context, c int, barrier *StartBarrier) (Le
 		}(a)
 	}
 	wg.Wait()
+	// Agents that stopped early still leave the level open until end. Callers
+	// treat RunLevel returning as the window closing, and summarize divides by
+	// the full duration.
+	idle := time.NewTimer(time.Until(end))
+	select {
+	case <-idle.C:
+	case <-ctx.Done():
+		idle.Stop()
+	}
 
 	var all []Sample
 	for _, a := range agents {
