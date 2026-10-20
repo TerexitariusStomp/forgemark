@@ -194,3 +194,26 @@ func TestPinReplicas(t *testing.T) {
 		t.Errorf("a subdomain of an eTLD+1 entry must be admitted: %v", err)
 	}
 }
+
+func TestSameOriginRedirect(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		from, to string
+		ok       bool
+	}{
+		{"https://forge.example/o/r/info/refs", "https://forge.example/o/r.git/info/refs", true},
+		{"https://forge.example/o/r/info/refs", "https://FORGE.example:443/o/r.git/info/refs", true},
+		{"https://forge.example/o/r/info/refs", "https://forge.example:8443/o/r/info/refs", false},
+		{"https://forge.example/o/r/info/refs", "https://cdn.forge.example/o/r/info/refs", false},
+		{"https://forge.example/o/r/info/refs", "https://other.example/o/r/info/refs", false},
+		{"https://forge.example/o/r/info/refs", "http://forge.example/o/r/info/refs", false},
+	} {
+		from, _ := http.NewRequest(http.MethodGet, tc.from, nil)
+		to, _ := http.NewRequest(http.MethodGet, tc.to, nil)
+		err := sameOriginRedirect(to, []*http.Request{from})
+		if (err == nil) != tc.ok {
+			t.Errorf("redirect %s -> %s: err = %v, want ok=%v", tc.from, tc.to, err, tc.ok)
+		}
+	}
+}

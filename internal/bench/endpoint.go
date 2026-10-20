@@ -215,22 +215,17 @@ func probeInfoRefs(ctx context.Context, c *http.Client, node, repo string, auth 
 // every push). The capability is per repo in git (receive.advertisePushOptions),
 // hence every pair is probed.
 func requirePushOptions(ctx context.Context, c *http.Client, nodes, repos []string, creds credentialProvider) error {
-	// Hand redirects back instead of following them: Go forwards the
-	// Authorization header to same-host and subdomain redirects.
-	probe := *c
-	probe.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	// The client follows a redirect only within the configured origin, as the
+	// push does, so the probe checks the repo the push will reach.
 	for _, repo := range repos {
 		auth, err := creds.basicAuth(ctx, repo)
 		if err != nil {
 			return err
 		}
 		for _, node := range nodes {
-			hdr, body, err := probeInfoRefs(ctx, &probe, node, repo, auth)
+			_, body, err := probeInfoRefs(ctx, c, node, repo, auth)
 			if err != nil {
 				return fmt.Errorf("push-options probe: %w", err)
-			}
-			if hdr.Get("Location") != "" {
-				return fmt.Errorf("push-options probe: %s redirected; refusing to follow", verbatimURLFor(node, repo))
 			}
 			ok, err := advertisesPushOptions(body)
 			if err != nil {

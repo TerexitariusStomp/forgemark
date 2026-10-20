@@ -318,9 +318,8 @@ func TestAgentCountsCancelledOps(t *testing.T) {
 }
 
 // Go forwards Authorization on a redirect to the same host on another port,
-// so the probe must refuse redirects instead of following them with the
-// credential.
-func TestPushOptionsProbeRefusesRedirects(t *testing.T) {
+// so the probe must refuse a redirect that leaves the configured origin.
+func TestPushOptionsProbeRefusesCrossOriginRedirects(t *testing.T) {
 	t.Parallel()
 
 	var leaked atomic.Bool
@@ -348,4 +347,69 @@ func TestPushOptionsProbeRefusesRedirects(t *testing.T) {
 	if leaked.Load() {
 		t.Fatal("the probe forwarded the credential across a redirect")
 	}
+}
+
+// Go forwards Authorization to any port of the same hostname and to
+// subdomains, so every request on the generic path, not only the probe, must
+// keep the credential on the forge's own origin.
+func TestGenericPathKeepsCredentialOnOrigin(t *testing.T) {
+	t.Parallel()
+
+	var leaked atomic.Bool
+	elsewhere := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "" {
+			leaked.Store(true)
+		}
+		w.Header().Set("Content-Type", "application/x-git-receive-pack-advertisement")
+		_, _ = io.WriteString(w, receivePackAdvertisement("report-status delete-refs"))
+	}))
+	defer elsewhere.Close()
+	redirector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, elsewhere.URL+r.URL.RequestURI(), http.StatusFound)
+	}))
+	defer redirector.Close()
+
+	w := Workload{
+		Strategy: "branch", Concurrency: []int{1}, Duration: time.Second,
+		Commit: CommitConfig{FilesMin: 1, FilesMax: 1, FileSize: 1},
+	}
+	r, err := NewRunner(t.Context(), Target{Remote: redirector.URL, Repos: []string{"repo.git"}, Secret: "s"}, w, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	if _, err := r.CleanStaleBenchRefs(t.Context()); err == nil || !strings.Contains(err.Error(), "redirect") {
+		t.Fatalf("CleanStaleBenchRefs against a cross-origin redirect = %v, want a redirect refusal", err)
+	}
+	if leaked.Load() {
+		t.Fatal("the credential followed a redirect to another origin")
+	}
+}
+
+// Forges redirect within their own origin (GitLab: repo -> repo.git), and git
+// follows that on the initial info/refs request. The probe must accept it too,
+// or -push-options fails where `git push -o` works.
+func TestPushOptionsProbeFollowsSameOriginRedirect(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/repo/info/refs" {
+			http.Redirect(w, r, "/repo.git/info/refs?"+r.URL.RawQuery, http.StatusMovedPermanently)
+			return
+		}
+		w.Header().Set("Content-Type", "application/x-git-receive-pack-advertisement")
+		_, _ = io.WriteString(w, receivePackAdvertisement("report-status push-options"))
+	}))
+	defer srv.Close()
+
+	w := Workload{
+		Strategy: "branch", Concurrency: []int{1}, Duration: time.Second,
+		Commit:      CommitConfig{FilesMin: 1, FilesMax: 1, FileSize: 1},
+		PushOptions: []string{"ci.skip"},
+	}
+	r, err := NewRunner(t.Context(), Target{Remote: srv.URL, Repos: []string{"repo"}, Secret: "s"}, w, nil)
+	if err != nil {
+		t.Fatalf("NewRunner against a same-origin redirect: %v", err)
+	}
+	r.Close()
 }
