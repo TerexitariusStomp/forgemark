@@ -150,7 +150,7 @@ func List(dir string) ([]Summary, error) {
 		if e.IsDir() || !validFile.MatchString(e.Name()) {
 			continue
 		}
-		doc, err := Load(dir, e.Name())
+		s, err := readSummary(filepath.Join(dir, e.Name()))
 		if err != nil {
 			continue
 		}
@@ -158,19 +158,56 @@ func List(dir string) ([]Summary, error) {
 		if err != nil {
 			continue
 		}
-		s := Summary{
-			File: e.Name(), RunID: doc.RunID, Strategy: doc.Strategy, RefNamespace: doc.RefNamespace,
-			State: doc.State, ModTime: info.ModTime(),
-		}
-		for _, t := range doc.Targets {
-			s.Targets = append(s.Targets, t.Name)
-			s.Levels = max(s.Levels, len(t.Levels))
-		}
+		s.File, s.ModTime = e.Name(), info.ModTime()
 		out = append(out, s)
 	}
 	// Newest first: the history view leads with the latest run.
 	sort.Slice(out, func(i, j int) bool { return out[i].ModTime.After(out[j].ModTime) })
 	return out, nil
+}
+
+// summaryDoc is the part of a Doc that a history listing needs. Decoding into
+// it skips each target's per-second Series, which is the bulk of a long run's
+// doc, so a listing costs about one read of the file.
+type summaryDoc struct {
+	Format       int    `json:"format"`
+	RunID        string `json:"run_id"`
+	Strategy     string `json:"strategy"`
+	RefNamespace string `json:"ref_namespace"`
+	State        string `json:"state"`
+	Targets      []struct {
+		Name   string            `json:"name"`
+		Levels []json.RawMessage `json:"levels"`
+	} `json:"targets"`
+
+	// format 1 (legacy CLI)
+	Target string            `json:"target"`
+	Levels []json.RawMessage `json:"levels"`
+}
+
+// readSummary summarizes the doc at path, applying the same legacy
+// normalization as Load.
+func readSummary(path string) (Summary, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return Summary{}, err
+	}
+	var doc summaryDoc
+	if err := json.Unmarshal(b, &doc); err != nil {
+		return Summary{}, err
+	}
+	s := Summary{RunID: doc.RunID, Strategy: doc.Strategy, RefNamespace: doc.RefNamespace, State: doc.State}
+	if doc.Format == 0 && len(doc.Targets) == 0 {
+		s.Targets, s.Levels, s.State = []string{doc.Target}, len(doc.Levels), "done"
+	}
+	for _, t := range doc.Targets {
+		s.Targets = append(s.Targets, t.Name)
+		s.Levels = max(s.Levels, len(t.Levels))
+	}
+	if s.RefNamespace == "" {
+		s.RefNamespace = LegacyRefNamespace
+	}
+	return s, nil
 }
 
 // Load reads one doc and normalizes legacy CLI docs into the Targets shape.

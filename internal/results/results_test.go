@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/entireio/forgemark/internal/bench"
@@ -133,8 +134,48 @@ func TestListSkipsUnparseableAndSortsNewestFirst(t *testing.T) {
 	if len(list) != 1 || list[0].RunID != "good" {
 		t.Fatalf("List = %+v, want just the parseable doc", list)
 	}
+	if got := list[0]; len(got.Targets) != 1 || got.Targets[0] != "x" || got.State != "done" || got.RefNamespace != LegacyRefNamespace {
+		t.Fatalf("legacy summary = %+v, want target x, state done, legacy namespace", got)
+	}
 
 	if empty, err := List(filepath.Join(dir, "missing")); err != nil || len(empty) != 0 {
 		t.Fatalf("List(missing dir) = %v, %v — want empty, nil", empty, err)
+	}
+}
+
+// List backs a history endpoint that remote viewers can call on an exposed
+// bind, so a summary must cost about one read of the file, not a full decode
+// of every per-second series point. Not parallel: it measures process-wide
+// allocation.
+func TestListDoesNotDecodeSeries(t *testing.T) {
+	dir := t.TempDir()
+	series := make([]SeriesPoint, 50_000)
+	for i := range series {
+		series[i] = SeriesPoint{T: int64(i), DtMs: 1000, OK: 3, P50: 1.5, P95: 2.5, P99: 3.5}
+	}
+	doc := Doc{
+		Format: 2, RunID: "fmbig", Strategy: "branch", State: "done",
+		Targets: []TargetResult{{Name: "a", Levels: []bench.LevelResult{{Concurrency: 1}}, Series: series}},
+	}
+	if err := Write(dir, "forgemark-fmbig.json", doc); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(filepath.Join(dir, "forgemark-fmbig.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	list, err := List(dir)
+	runtime.ReadMemStats(&after)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 1 || list[0].RunID != "fmbig" || list[0].Levels != 1 || list[0].Targets[0] != "a" {
+		t.Fatalf("List = %+v, want one summary of fmbig", list)
+	}
+	if alloc := after.TotalAlloc - before.TotalAlloc; alloc > uint64(info.Size())*3/2 {
+		t.Fatalf("List allocated %d bytes for a %d-byte doc, want under 1.5x the file size", alloc, info.Size())
 	}
 }

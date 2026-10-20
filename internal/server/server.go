@@ -27,16 +27,24 @@ var staticFiles embed.FS
 // still capping a wedged run so ctrl-c can't hang forever.
 const shutdownDrain = 40 * time.Second
 
+// historyReaders caps concurrent history reads. Each one holds a whole result
+// doc in memory, and remote viewers can reach history on an exposed bind.
+const historyReaders = 2
+
 type Server struct {
-	addr string
-	mgr  *RunManager
-	mux  *http.ServeMux
+	addr         string
+	mgr          *RunManager
+	mux          *http.ServeMux
+	historySlots chan struct{}
 }
 
 // New builds the server. resultsDir is where finished runs are persisted and
 // where history is read from (shared with the CLI's results/ by default).
 func New(addr, resultsDir string) *Server {
-	s := &Server{addr: addr, mgr: newRunManager(resultsDir), mux: http.NewServeMux()}
+	s := &Server{
+		addr: addr, mgr: newRunManager(resultsDir), mux: http.NewServeMux(),
+		historySlots: make(chan struct{}, historyReaders),
+	}
 
 	staticRoot, err := fs.Sub(staticFiles, "static")
 	if err != nil {
@@ -59,8 +67,8 @@ func New(addr, resultsDir string) *Server {
 	s.mux.HandleFunc("GET /api/runs/{id}", s.requireLocalOrigin(s.handleGetRun))
 	s.mux.HandleFunc("POST /api/runs/{id}/cancel", s.requireLocalOrigin(s.requireLoopbackPeer(s.handleCancelRun)))
 	s.mux.HandleFunc("GET /api/runs/{id}/events", s.requireLocalOrigin(s.handleRunEvents))
-	s.mux.HandleFunc("GET /api/history", s.requireLocalOrigin(s.handleHistory))
-	s.mux.HandleFunc("GET /api/history/{file}", s.requireLocalOrigin(s.handleHistoryDoc))
+	s.mux.HandleFunc("GET /api/history", s.requireLocalOrigin(s.limitHistory(s.handleHistory)))
+	s.mux.HandleFunc("GET /api/history/{file}", s.requireLocalOrigin(s.limitHistory(s.handleHistoryDoc)))
 	// Discovery execs the operator's CLIs and returns their identities; it is
 	// loopback-only on top of the origin guard, never reachable on an exposed bind.
 	s.mux.HandleFunc("GET /api/local/suggest", s.requireLocalOrigin(s.requireLoopbackBind(s.handleLocalSuggest)))
@@ -177,6 +185,20 @@ func (s *Server) requireLoopbackBind(next http.HandlerFunc) http.HandlerFunc {
 	}
 	return func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "this endpoint reads local CLI credentials and is disabled on a non-loopback -addr", http.StatusForbidden)
+	}
+}
+
+// limitHistory runs next once a history slot is free, so memory for result
+// docs is bounded by historyReaders rather than by how many requests arrive.
+// A request that gives up while waiting just leaves.
+func (s *Server) limitHistory(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case s.historySlots <- struct{}{}:
+			defer func() { <-s.historySlots }()
+			next(w, r)
+		case <-r.Context().Done():
+		}
 	}
 }
 
