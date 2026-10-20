@@ -193,7 +193,7 @@ func (r *Runner) cleanRepoRefs(ctx context.Context, repoPath string, re *regexp.
 	// objects, so a bare remote over an empty storer suffices. NoErrAlreadyUpToDate
 	// means nothing matching the spec(s) remained — already gone counts as done.
 	push := func(specs []config.RefSpec) error {
-		err := remote.PushContext(ctx, &git.PushOptions{RemoteName: "origin", RefSpecs: specs, ClientOptions: opts})
+		err := remote.PushContext(ctx, &git.PushOptions{RemoteName: "origin", RefSpecs: specs, Options: r.w.PushOptions, ClientOptions: opts})
 		if errors.Is(err, git.NoErrAlreadyUpToDate) {
 			return nil
 		}

@@ -159,3 +159,24 @@ func TestNamespace(t *testing.T) {
 		t.Errorf("Validate(bad prefix) = %v, want -branch-prefix error", err)
 	}
 }
+
+func TestValidatePushOptions(t *testing.T) {
+	t.Parallel()
+
+	w := Workload{
+		Strategy: "branch", Concurrency: []int{1}, Duration: time.Second,
+		Commit: CommitConfig{FilesMin: 1, FilesMax: 1, FileSize: 1},
+	}
+	for _, opts := range [][]string{nil, {"ci.skip"}, {"a=b,c", "x y"}} {
+		w.PushOptions = opts
+		if err := w.Validate(); err != nil {
+			t.Errorf("Validate(push options %q) = %v, want nil", opts, err)
+		}
+	}
+	for _, opts := range [][]string{{"a\nb"}, {"ok", "nul\x00"}} {
+		w.PushOptions = opts
+		if err := w.Validate(); err == nil {
+			t.Errorf("Validate(push options %q) = nil, want error", opts)
+		}
+	}
+}
