@@ -316,3 +316,36 @@ func TestAgentCountsCancelledOps(t *testing.T) {
 		t.Fatalf("recorded %d samples for a cancelled op", len(a.samples))
 	}
 }
+
+// Go forwards Authorization on a redirect to the same host on another port,
+// so the probe must refuse redirects instead of following them with the
+// credential.
+func TestPushOptionsProbeRefusesRedirects(t *testing.T) {
+	t.Parallel()
+
+	var leaked atomic.Bool
+	elsewhere := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "" {
+			leaked.Store(true)
+		}
+		_, _ = io.WriteString(w, receivePackAdvertisement("report-status push-options"))
+	}))
+	defer elsewhere.Close()
+	redirector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, elsewhere.URL+r.URL.RequestURI(), http.StatusFound)
+	}))
+	defer redirector.Close()
+
+	w := Workload{
+		Strategy: "branch", Concurrency: []int{1}, Duration: time.Second,
+		Commit:      CommitConfig{FilesMin: 1, FilesMax: 1, FileSize: 1},
+		PushOptions: []string{"ci.skip"},
+	}
+	_, err := NewRunner(t.Context(), Target{Remote: redirector.URL, Repos: []string{"repo.git"}, Secret: "s"}, w, nil)
+	if err == nil || !strings.Contains(err.Error(), "redirect") {
+		t.Fatalf("NewRunner against a redirecting forge = %v, want a redirect refusal", err)
+	}
+	if leaked.Load() {
+		t.Fatal("the probe forwarded the credential across a redirect")
+	}
+}
