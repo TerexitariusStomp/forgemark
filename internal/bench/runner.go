@@ -229,27 +229,44 @@ func (r *Runner) RunLevel(ctx context.Context, c int, barrier *StartBarrier) (Le
 		return LevelResult{}, err
 	}
 	r.levelsLeft = max(r.levelsLeft-1, 0)
-	lvlCtx, cancel := context.WithDeadline(ctx, start.Add(total))
+	// Agents stop starting ops they don't expect to finish by end. The hard
+	// deadline only cancels the few that overrun their estimate by more than
+	// drainGrace, rather than every op in flight when the window closes.
+	end := start.Add(total)
+	lvlCtx, cancel := context.WithDeadline(ctx, end.Add(drainGrace))
 	defer cancel()
 	var wg sync.WaitGroup
 	for _, a := range agents {
 		wg.Add(1)
 		go func(a *agent) {
 			defer wg.Done()
-			a.run(lvlCtx, start)
+			a.run(lvlCtx, start, end)
 		}(a)
 	}
 	wg.Wait()
+	// Agents that stopped early still leave the level open until end. Callers
+	// treat RunLevel returning as the window closing, and summarize divides by
+	// the full duration.
+	idle := time.NewTimer(time.Until(end))
+	select {
+	case <-idle.C:
+	case <-ctx.Done():
+		idle.Stop()
+	}
 
 	var all []Sample
+	cancelled := 0
 	for _, a := range agents {
 		all = append(all, a.samples...)
+		cancelled += a.cancelled
 	}
 	reposUsed := 1
 	if r.w.Strategy == "repo" {
 		reposUsed = min(c, len(r.target.Repos))
 	}
-	return summarize(all, c, r.w.Strategy, reposUsed, len(r.ep.nodes), r.w.Warmup, r.w.Duration, r.w.CommitDesc()), nil
+	res := summarize(all, c, r.w.Strategy, reposUsed, len(r.ep.nodes), r.w.Warmup, r.w.Duration, r.w.CommitDesc())
+	res.Cancelled = cancelled
+	return res, nil
 }
 
 func setupGeneric(t Target) (credentialProvider, *endpoint, error) {
@@ -273,8 +290,8 @@ func setupGeneric(t Target) (credentialProvider, *endpoint, error) {
 // tokenCovers refuses to start work the account access token cannot
 // cover: nothing refreshes it, so a level that outlives it would report
 // authentication failures as throughput. It needs every level not yet
-// started, plus session ref cleanup after each window and clock skew,
-// measured from now. A secret that is not a JWT with exp passes.
+// started, plus the drain and session ref cleanup after each window and
+// clock skew, measured from now. A secret that is not a JWT with exp passes.
 func (r *Runner) tokenCovers(now time.Time) error {
 	if r.tokenExp.IsZero() {
 		return nil
@@ -284,13 +301,18 @@ func (r *Runner) tokenCovers(now time.Time) error {
 	if r.w.Strategy == "session" {
 		cleanup = sessionCleanupTimeout
 	}
-	need := time.Duration(levels)*(r.w.Warmup+r.w.Duration+cleanup) + tokenSkew
+	need := time.Duration(levels)*(r.w.Warmup+r.w.Duration+drainGrace+cleanup) + tokenSkew
 	if left := r.tokenExp.Sub(now); left < need {
-		return fmt.Errorf("token expires in %s but %d remaining levels need %s (warmup %s + duration %s + cleanup %s each, + %s skew); mint a fresher token or shorten the run",
-			max(left, 0).Round(time.Second), levels, need, r.w.Warmup, r.w.Duration, cleanup, tokenSkew)
+		return fmt.Errorf("token expires in %s but %d remaining levels need %s (warmup %s + duration %s + drain %s + cleanup %s each, + %s skew); mint a fresher token or shorten the run",
+			max(left, 0).Round(time.Second), levels, need, r.w.Warmup, r.w.Duration, drainGrace, cleanup, tokenSkew)
 	}
 	return nil
 }
+
+// drainGrace is how long past the window end an in-flight op may run before
+// the level cancels it. Agents don't start ops expected to overrun the window,
+// so this only absorbs ops slower than their latency estimate.
+const drainGrace = 30 * time.Second
 
 // tokenSkew absorbs clock drift against the issuer.
 const tokenSkew = 30 * time.Second

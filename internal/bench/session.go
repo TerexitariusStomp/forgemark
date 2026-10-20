@@ -39,11 +39,12 @@ type sessionConfig struct {
 // runClones is the agent loop for the clone strategy. Each iteration performs
 // a shallow in-memory clone of the base branch, records one op==clone sample,
 // then discards the repo.
-func (a *agent) runClones(ctx context.Context, start time.Time) {
-	for ctx.Err() == nil {
+func (a *agent) runClones(ctx context.Context, start, end time.Time) {
+	for ctx.Err() == nil && a.fits(OpClone, end) {
 		t0 := time.Now()
 		_, _, err := a.cloneSession(ctx)
 		if ctx.Err() != nil {
+			a.cancelled++
 			return
 		}
 		res := readOutcome(err)
@@ -55,12 +56,13 @@ func (a *agent) runClones(ctx context.Context, start time.Time) {
 // recorded as op==clone, push latency as op==push, so they're summarized
 // separately. Ephemeral session branches (…-sN) model an agent abandoning a
 // working branch each session.
-func (a *agent) runSessions(ctx context.Context, start time.Time) {
+func (a *agent) runSessions(ctx context.Context, start, end time.Time) {
 	rng := rand.New(rand.NewSource(int64(a.id)*1_000_003 + 1)) //nolint:gosec // synthetic load, not security-sensitive
-	for session := 0; ctx.Err() == nil; session++ {
+	for session := 0; ctx.Err() == nil && a.fits(OpClone, end); session++ {
 		t0 := time.Now()
 		repo, branch, err := a.cloneSession(ctx)
 		if ctx.Err() != nil {
+			a.cancelled++
 			return
 		}
 		res := readOutcome(err)
@@ -72,10 +74,13 @@ func (a *agent) runSessions(ctx context.Context, start time.Time) {
 
 		sessRef := fmt.Sprintf("%s-s%d", a.ref, session)
 		pushed := false
-		for k := 0; k < a.sess.commits && ctx.Err() == nil; k++ {
+		for k := 0; k < a.sess.commits && ctx.Err() == nil && a.fits(OpPush, end); k++ {
 			if err := a.commit(rng, k); err != nil {
 				a.record(Sample{Offset: time.Since(start), Res: OutcomeErr, Op: OpPush, Msg: err.Error()})
 				continue
+			}
+			if !a.fits(OpPush, end) {
+				break // the commit spent the remaining window. sessRef is still cleaned up
 			}
 			t1 := time.Now()
 			perr := a.pushRef(ctx, branch, sessRef)
@@ -83,6 +88,7 @@ func (a *agent) runSessions(ctx context.Context, start time.Time) {
 				pushed = true // the branch now exists on the remote
 			}
 			if ctx.Err() != nil {
+				a.cancelled++
 				break // window closed mid-push: stop, but still clean up sessRef
 			}
 			o := classify(perr)

@@ -15,7 +15,7 @@ import (
 // rotation so the latency slice doesn't grow unbounded (unrealistic reallocation).
 func BenchmarkCollectorOnSample(b *testing.B) {
 	c := &collector{}
-	c.reset(0)
+	c.reset(0, 0)
 	s := bench.Sample{Op: bench.OpPush, Res: bench.OutcomeOK, Dur: 30 * time.Millisecond, Offset: time.Second}
 	var n int64
 	b.RunParallel(func(pb *testing.PB) {

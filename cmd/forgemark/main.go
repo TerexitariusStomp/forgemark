@@ -269,12 +269,12 @@ func expandRepos(reposCSV, pattern string, count int) ([]string, error) {
 
 func printRow(r bench.LevelResult) {
 	if r.Strategy == "clone" {
-		fmt.Printf("  c=%-4d clone_ok=%-6d clone/s=%-8.1f p50=%-7.1f p95=%-8.1f p99=%-8.1f max=%-8.1f clone_err=%d\n",
-			r.Concurrency, r.OK, r.OpsPerSec, r.P50ms, r.P95ms, r.P99ms, r.Maxms, r.OtherErrors)
+		fmt.Printf("  c=%-4d clone_ok=%-6d clone/s=%-8.1f p50=%-7.1f p95=%-8.1f p99=%-8.1f max=%-8.1f clone_err=%d cancelled=%d\n",
+			r.Concurrency, r.OK, r.OpsPerSec, r.P50ms, r.P95ms, r.P99ms, r.Maxms, r.OtherErrors, r.Cancelled)
 		return
 	}
-	fmt.Printf("  c=%-4d push_ok=%-6d push/s=%-8.1f p50=%-7.1f p95=%-8.1f p99=%-8.1f max=%-8.1f cas=%d err=%d\n",
-		r.Concurrency, r.OK, r.OpsPerSec, r.P50ms, r.P95ms, r.P99ms, r.Maxms, r.CASFailures, r.OtherErrors)
+	fmt.Printf("  c=%-4d push_ok=%-6d push/s=%-8.1f p50=%-7.1f p95=%-8.1f p99=%-8.1f max=%-8.1f cas=%d err=%d cancelled=%d\n",
+		r.Concurrency, r.OK, r.OpsPerSec, r.P50ms, r.P95ms, r.P99ms, r.Maxms, r.CASFailures, r.OtherErrors, r.Cancelled)
 	if r.Clones > 0 {
 		fmt.Printf("        clones=%-5d clone_ok=%-5d clone_p50=%-7.1f clone_p95=%-8.1f clone_p99=%-8.1f clone_err=%d\n",
 			r.Clones, r.CloneOK, r.CloneP50ms, r.CloneP95ms, r.CloneP99ms, r.CloneErrors)

@@ -34,15 +34,15 @@ func TestTokenCovers(t *testing.T) {
 	if err := r.tokenCovers(now.Add(5 * time.Minute)); err == nil {
 		t.Fatal("10m left cannot cover an 11m level")
 	}
-	// 11m45s covers an 11m level plus skew, but not a session
+	// 12m15s covers an 11m level plus drain and skew, but not a session
 	// level's post-window ref cleanup on top.
-	r.tokenExp = now.Add(11*time.Minute + 45*time.Second)
+	r.tokenExp = now.Add(12*time.Minute + 15*time.Second)
 	if err := r.tokenCovers(now); err != nil {
-		t.Fatalf("11m45s covers a branch level plus skew: %v", err)
+		t.Fatalf("12m15s covers a branch level plus drain and skew: %v", err)
 	}
 	r.w.Strategy = "session"
 	if err := r.tokenCovers(now); err == nil {
-		t.Fatal("11m45s cannot also cover session cleanup")
+		t.Fatal("12m15s cannot also cover session cleanup")
 	}
 	r.tokenExp = time.Time{}
 	if err := r.tokenCovers(now); err != nil {
@@ -179,5 +179,67 @@ func TestUATransportEnforcesTimeout(t *testing.T) {
 	}
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("error = %v, want context.DeadlineExceeded", err)
+	}
+}
+
+// Agents stop early when the next push would overrun the window, but the
+// level must still span its configured window: the server closes the live
+// series when RunLevel returns, and summarize divides by the full duration.
+func TestRunLevelSpansWindowWhenAgentsStopEarly(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(300 * time.Millisecond)
+		http.Error(w, "slow", http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+	r := &Runner{
+		target:     Target{Repos: []string{"o/r"}},
+		w:          Workload{Strategy: "branch", Concurrency: []int{1}, Duration: 500 * time.Millisecond, Commit: CommitConfig{FilesMin: 1, FilesMax: 1, FileSize: 1}},
+		creds:      staticCreds{username: "token", password: "secret"},
+		ep:         &endpoint{nodes: []string{srv.URL}, objFmt: formatcfg.SHA1},
+		httpc:      srv.Client(),
+		levelsLeft: 1,
+	}
+	start := time.Now()
+	res, err := r.RunLevel(context.Background(), 1, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Pushes != 1 {
+		t.Fatalf("pushes = %d, want 1 (the second would overrun the window)", res.Pushes)
+	}
+	if elapsed := time.Since(start); elapsed < r.w.Duration {
+		t.Fatalf("RunLevel returned after %s, before the %s window ended", elapsed, r.w.Duration)
+	}
+}
+
+func TestRunLevelReportsCancelledOps(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-time.After(300 * time.Millisecond):
+			http.Error(w, "slow", http.StatusInternalServerError)
+		case <-r.Context().Done():
+		}
+	}))
+	defer srv.Close()
+	r := &Runner{
+		target:     Target{Repos: []string{"o/r"}},
+		w:          Workload{Strategy: "branch", Concurrency: []int{2}, Duration: 10 * time.Second, Commit: CommitConfig{FilesMin: 1, FilesMax: 1, FileSize: 1}},
+		creds:      staticCreds{username: "token", password: "secret"},
+		ep:         &endpoint{nodes: []string{srv.URL}, objFmt: formatcfg.SHA1},
+		httpc:      srv.Client(),
+		levelsLeft: 1,
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	res, err := r.RunLevel(ctx, 2, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Cancelled != 2 {
+		t.Fatalf("Cancelled = %d, want both agents' in-flight pushes", res.Cancelled)
 	}
 }
