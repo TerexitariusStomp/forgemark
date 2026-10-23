@@ -110,6 +110,34 @@ func TestStaleRefAgeGuard(t *testing.T) {
 	}
 }
 
+// -min-age 0 promises every matching ref, but run IDs embed the PUSHING
+// machine's clock: a ref stamped by a host running ahead decodes to a start
+// time in our future, and a now-based cutoff would spare it. A zero cutoff
+// must skip the comparison entirely while still requiring the forgemark
+// shape and a parseable run ID.
+func TestStaleRefZeroCutoffIgnoresClockSkew(t *testing.T) {
+	re := staleBenchRefRe("refs/forgemark/", "bench/")
+	id := func(at time.Time) string { return strconv.FormatInt(at.UnixNano(), 36) }
+
+	future := "refs/forgemark/bench/fm" + id(time.Now().Add(6*time.Hour)) + "-c1-a0"
+	if staleRef(re, future, time.Now()) {
+		t.Fatal("test premise broken: a now cutoff should spare a future-stamped ref")
+	}
+	if !staleRef(re, future, time.Time{}) {
+		t.Error("zero cutoff spared a ref stamped ahead of this clock; -min-age 0 must sweep it")
+	}
+	past := "refs/forgemark/bench/fm" + id(time.Now().Add(-time.Minute)) + "-t0-c2-a1"
+	if !staleRef(re, past, time.Time{}) {
+		t.Error("zero cutoff spared a minute-old ref")
+	}
+	if staleRef(re, "refs/forgemark/bench/keep-me", time.Time{}) {
+		t.Error("zero cutoff swept a non-forgemark ref; shape must still gate deletion")
+	}
+	if staleRef(re, "refs/forgemark/bench/fmzzzzzzzzzzzzzzzzzzzz-c1-a0", time.Time{}) {
+		t.Error("zero cutoff swept an unparseable run ID; when in doubt, never delete")
+	}
+}
+
 // The first push to an empty repo promotes that bench ref to the remote's
 // default branch, which forges refuse to delete — the sweep must leave it
 // alone instead of failing on every subsequent run, while still deleting the
